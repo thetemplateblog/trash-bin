@@ -1,0 +1,7 @@
+/* Ensure full width for the workspace area */
+/* Reduce or eliminate the sidebar impact for your workspace */
+
+#main .workspace .page-wrapper {
+    margin-left: 200 !important;    /* Remove the left margin */
+    max-width: 200% !important;   /* Ensure the workspace takes up full width */
+}

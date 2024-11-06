@@ -7,8 +7,9 @@ use TheTemplateBlog\TrashBin\Http\Middleware\TrashBinPermissions;
 use Statamic\Events\EntryDeleting;
 use TheTemplateBlog\TrashBin\Listeners\HandleEntryDeleting;
 use TheTemplateBlog\TrashBin\Services\TrashManager;
-use Statamic\Facades\CP\Nav;
+use Statamic\Facades\{CP\Nav, File, Path};
 use Statamic\Facades\Permission;
+use Illuminate\Support\Facades\Log;
 
 class ServiceProvider extends AddonServiceProvider
 {
@@ -24,7 +25,6 @@ class ServiceProvider extends AddonServiceProvider
         ],
     ];
 
-    // Use webpack/mix compiled assets from dist directory instead
     protected $scripts = [
         __DIR__.'/../dist/js/cp.js',
     ];
@@ -33,7 +33,6 @@ class ServiceProvider extends AddonServiceProvider
         __DIR__.'/../dist/css/cp.css',
     ];
 
-    // Routes will be automatically registered by Statamic in newer versions
     protected $routes = [
         'cp' => __DIR__.'/../routes/cp.php',
     ];
@@ -61,11 +60,46 @@ class ServiceProvider extends AddonServiceProvider
             __DIR__.'/../resources/lang' => lang_path('vendor/trash-bin'),
         ], ['trash-bin', 'trash-bin-translations']);
 
+        // Initialize trash directory structure
+        $this->initializeTrashStructure();
+
         // Register navigation
         $this->bootNavigation();
         
         // Register permissions
         $this->bootPermissions();
+
+        // Log that the addon has booted
+        Log::info('Trash Bin addon booted', [
+            'config' => config('trash-bin'),
+            'trash_folder' => config('trash-bin.paths.trash_folder')
+        ]);
+    }
+
+    /**
+     * Initialize the trash directory structure
+     */
+    protected function initializeTrashStructure()
+    {
+        $trashRoot = config('trash-bin.paths.trash_folder');
+        Log::info('Initializing trash structure', ['root' => $trashRoot]);
+        
+        // Create root trash directory if it doesn't exist
+        if (!File::exists($trashRoot)) {
+            Log::info('Creating trash root directory');
+            File::makeDirectory($trashRoot, 0755, true);
+        }
+
+        // Create directories for each enabled type
+        foreach (config('trash-bin.enabled_types', []) as $type => $enabled) {
+            if ($enabled) {
+                $typePath = $trashRoot . '/' . $type;
+                if (!File::exists($typePath)) {
+                    Log::info('Creating type directory', ['type' => $type, 'path' => $typePath]);
+                    File::makeDirectory($typePath, 0755, true);
+                }
+            }
+        }
     }
 
     /**
@@ -73,12 +107,15 @@ class ServiceProvider extends AddonServiceProvider
      */
     public function register()
     {
+        // Merge config
         $this->mergeConfigFrom(
             __DIR__.'/../config/trash-bin.php', 'trash-bin'
         );
 
         // Register singleton using app binding
-        $this->app->singleton(TrashManager::class);
+        $this->app->singleton(TrashManager::class, function ($app) {
+            return new TrashManager();
+        });
     }
 
     /**

@@ -31,6 +31,16 @@ class TrashBinPermissions
             $permissionRequired = 'delete trash-bin-item';  // Permission to delete items
         }
 
+        // Check if the user has the required permission
+        if ($permissionRequired && !$user->can($permissionRequired)) {
+            Log::warning('Unauthorized access attempt', [
+                'user' => $user->id(),
+                'permission_required' => $permissionRequired,
+                'route' => $request->route()->getName()
+            ]);
+            abort(403, 'You do not have permission to perform this action.');
+        }
+
         // Proceed to the next middleware or the core request
         return $next($request);
     }

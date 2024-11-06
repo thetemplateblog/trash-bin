@@ -29,6 +29,6 @@ return [
     'paths' => [
         'collections' => base_path('content/collections'),   // Directory where collections are stored.
         'public_assets' => public_path('vendor/trash-bin'),  // Path for public assets.
-        'trash_folder' => 'content/collections/.trash',  // The folder where trashed items are placed.
+        'trash_folder' => base_path('content/collections/.trash'),  // The folder where trashed items are placed.
     ],
 ];

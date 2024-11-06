@@ -79,34 +79,49 @@ class TrashController extends CpController
     }
 
     /**
-     * Move item to Trash
+     * Restore an item from trash
      */
-    public function softDelete(Request $request, string $type, string $id)
+    public function restore(string $type, string $id): void
     {
-        $this->authorize('delete trash-bin-item');
-        $this->validateRequest($request, ['metadata' => 'sometimes|array']);
+        $trashPath = $this->getPath($type, $id);
+        $metadata = $this->getMetadata($type, $id);
 
-        return $this->handleAction(
-            fn() => $this->trashManager->moveToTrash($type, $id, $request->input('metadata', [])),
-            __('Item moved to trash.'),
-            __('Failed to move item to trash.'),
-            $request->wantsJson()
-        );
-    }
+        if (!File::exists($trashPath)) {
+            throw new \Exception("Trashed file not found");
+        }
 
-    /**
-     * Restore item from Trash
-     */
-    public function restore(Request $request, string $type, string $id)
-    {
-        $this->authorize('restore trash-bin-item');
+        // The collection is directly in the metadata
+        $collection = $metadata['collection'] ?? null;
 
-        return $this->handleAction(
-            fn() => $this->trashManager->restore($type, $id),
-            __('Item restored successfully.'),
-            __('Failed to restore item.'),
-            $request->wantsJson()
-        );
+        if (empty($collection)) {
+            throw new \Exception("No collection information found");
+        }
+
+        // Use the original_path from metadata
+        $originalPath = $metadata['original_path'] ?? null;
+        
+        if (!$originalPath) {
+            throw new \Exception("No original path found");
+        }
+
+        $restorePath = File::exists($originalPath)
+            ? $this->getUniqueRestorePath($originalPath)
+            : $originalPath;
+
+        // Ensure directory exists
+        $this->ensureDirectoryExists(dirname($restorePath));
+
+        // Move file back
+        File::move($trashPath, $restorePath);
+
+        // Clean up metadata
+        File::delete($this->getMetadataPath($type, $id));
+
+        Log::info('Item restored', [
+            'from' => $trashPath,
+            'to' => $restorePath,
+            'collection' => $collection
+        ]);
     }
 
     /**

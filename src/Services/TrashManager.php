@@ -5,6 +5,7 @@ namespace TheTemplateBlog\TrashBin\Services;
 use Statamic\Facades\{File, YAML, Entry, User, Path, Collection as CollectionFacade};
 use Carbon\Carbon;
 use Illuminate\Support\{Collection, Str};
+use Illuminate\Support\Facades\Log;
 
 class TrashManager
 {
@@ -46,77 +47,138 @@ class TrashManager
     /**
      * Get all trashed items
      */
-    public function getTrashedItems(): Collection
+    public function getTrashedItems(int $limit = 50): Collection
     {
-        return collect($this->config['enabled_types'])
-            ->filter()
-            ->flatMap(function ($enabled, $type) {
-                $typePath = Path::tidy($this->trashRoot . "/{$type}");
-                
-                if (!File::exists($typePath)) {
-                    return collect();
-                }
-
-                return collect(File::getFiles($typePath))
-                    ->filter(fn($file) => Str::endsWith($file, '.md'))
-                    ->map(function ($file) use ($type) {
-                        $id = pathinfo($file, PATHINFO_FILENAME);
-                        $metadata = $this->getMetadata($type, $id);
-                        
-                        try {
-                            $content = YAML::parse(File::get($file));
-                            
-                            return [
-                                'type' => $type,
-                                'id' => $id,
-                                'title' => $content['title'] 
-                                    ?? $metadata['entry']['title'] 
-                                    ?? $id,
-                                'deleted_at' => $metadata['deleted_at'] 
-                                    ?? File::lastModified($file),
-                                'collection' => $metadata['collection'] ?? null,
-                                'path' => $file,
-                                'metadata' => $metadata,
-                                'content' => $content,
-                            ];
-                        } catch (\Exception $e) {
-                            \Log::error('Error processing trashed item', [
-                                'type' => $type,
-                                'id' => $id,
-                                'error' => $e->getMessage()
-                            ]);
-                            return null;
-                        }
-                    })
-                    ->filter();
+        return collect($this->getTrashFiles())
+            ->take($limit)
+            ->map(function ($file) {
+                $pathParts = explode('/', $file);
+                return [
+                    'id' => pathinfo($file, PATHINFO_FILENAME),
+                    'type' => $pathParts[count($pathParts) - 2], // Get the parent directory name
+                    'deleted_at' => File::lastModified($file),
+                    'formatted_date' => Carbon::createFromTimestamp(File::lastModified($file))->diffForHumans(),
+                ];
             })
-            ->sortByDesc('deleted_at');
+            ->sortByDesc('deleted_at')
+            ->values();
     }
-
+    
+    private function getTrashFiles(): array
+    {
+        $files = [];
+        $trashTypes = File::getFiles($this->trashRoot);
+        
+        foreach ($trashTypes as $typeDir) {
+            if (File::isDirectory($typeDir)) {
+                $typeFiles = File::getFiles($typeDir);
+                $files = array_merge($files, array_filter($typeFiles, fn($file) => Str::endsWith($file, '.md')));
+            }
+        }
+        
+        return $files;
+    }
+    
+    // Add this method for debugging
+    private function debug()
+    {
+        \Log::info('Trash root: ' . $this->trashRoot);
+        \Log::info('Trash contents: ', File::getFiles($this->trashRoot));
+        
+        $files = $this->getTrashFiles();
+        \Log::info('Trash files found:', $files);
+    }
+    
+    private function formatDate($timestamp): string
+    {
+        return Carbon::createFromTimestamp($timestamp)->diffForHumans();
+    }
+    
     /**
      * Move an item to trash
      */
     public function moveToTrash(string $type, string $id, array $metadata = []): void
     {
-        if (!$this->isTypeEnabled($type)) {
-            throw new \Exception("Type {$type} is not enabled for trash bin");
+        $originalPath = $metadata['path'] ?? '';
+        if (!File::exists($originalPath)) {
+            throw new \Exception("Original file not found: {$originalPath}");
         }
-
-        $trashPath = $this->getPath($type, $id);
-        $originalPath = $metadata['path'] ?? $this->getOriginalEntryPath($metadata['collection'], $id);
-
-        $this->ensureDirectoryExists($trashPath);
-        
-        // Save content
-        $content = $metadata['entry'] ?? [];
-        File::put($trashPath, YAML::dump($content));
-
+    
+        // Ensure the trash directory for this type exists
+        $trashTypePath = Path::tidy($this->trashRoot . '/' . $type);
+        if (!File::exists($trashTypePath)) {
+            File::makeDirectory($trashTypePath, 0755, true);
+        }
+    
+        // Use the original filename
+        $originalFilename = basename($originalPath);
+        $trashedFilename = $this->getUniqueFilename($trashTypePath, $originalFilename);
+    
+        // Full path for the trashed file
+        $trashedPath = Path::tidy($trashTypePath . '/' . $trashedFilename);
+    
+        // Move the file
+        File::move($originalPath, $trashedPath);
+    
         // Save metadata
-        $this->saveMetadata($type, $id, array_merge($metadata, [
+        $metadataPath = Path::tidy($trashTypePath . '/' . pathinfo($trashedFilename, PATHINFO_FILENAME) . '.meta.yaml');
+        $metadataContent = array_merge($metadata, [
+            'original_filename' => $originalFilename, // Store original filename in metadata
+            'id' => $id,
+            'type' => $type,
             'original_path' => $originalPath,
             'deleted_at' => Carbon::now()->timestamp,
-            'collection' => $metadata['collection'] ?? null
-        ]));
+        ]);
+        File::put($metadataPath, YAML::dump($metadataContent));
+    
+        Log::info("File moved to trash", [
+            'original_filename' => $originalFilename,
+            'trashed_filename' => $trashedFilename,
+            'from' => $originalPath,
+            'to' => $trashedPath
+        ]);
+    }    
+
+    private function getUniqueFilename(string $directory, string $filename): string
+    {
+        $basename = pathinfo($filename, PATHINFO_FILENAME);
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $newFilename = $filename;
+        $counter = 1;
+    
+        while (File::exists(Path::tidy($directory . '/' . $newFilename))) {
+            $newFilename = $basename . '-' . $counter . '.' . $extension;
+            $counter++;
+        }
+    
+        return $newFilename;
+    }
+
+    /**
+     * Generate a unique path for the trashed file
+     */
+    protected function getUniqueTrashPath(string $type, string $filename): string
+    {
+        $basePath = Path::tidy($this->trashRoot . '/' . $type);
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $baseFilename = pathinfo($filename, PATHINFO_FILENAME);
+        
+        $path = Path::tidy($basePath . '/' . $filename);
+
+        // If file doesn't exist, use original filename
+        if (!File::exists($path)) {
+            return $path;
+        }
+
+        // If it exists, start adding incremental numbers with hyphens
+        $count = 1;
+        while (File::exists($path)) {
+            $newFilename = $baseFilename . '-' . $count . '.' . $extension;
+            $path = Path::tidy($basePath . '/' . $newFilename);
+            $count++;
+        }
+
+        return $path;
     }
 
     /**
@@ -126,18 +188,48 @@ class TrashManager
     {
         $trashPath = $this->getPath($type, $id);
         $metadata = $this->getMetadata($type, $id);
-        
-        if (!$metadata['original_path']) {
-            throw new \Exception("Original path not found in metadata");
-        }
 
         if (!File::exists($trashPath)) {
-            throw new \Exception("File not found in trash");
+            throw new \Exception("Trashed file not found");
         }
 
-        $this->ensureDirectoryExists($metadata['original_path']);
-        File::move($trashPath, $metadata['original_path']);
-        $this->deleteMetadata($type, $id);
+        if (empty($metadata['collection'])) {
+            throw new \Exception("No collection information found");
+        }
+
+        // Get original path or create new one if exists
+        $restorePath = File::exists($metadata['original_path'])
+            ? $this->getUniqueRestorePath($metadata['original_path'])
+            : $metadata['original_path'];
+
+        // Ensure directory exists
+        $this->ensureDirectoryExists(dirname($restorePath));
+
+        // Move file back
+        File::move($trashPath, $restorePath);
+
+        // Clean up metadata
+        File::delete($this->getMetadataPath($type, $id));
+    }
+
+    /**
+     * Get unique restore path if original exists
+     */
+    protected function getUniqueRestorePath(string $originalPath): string
+    {
+        $extension = pathinfo($originalPath, PATHINFO_EXTENSION);
+        $basename = pathinfo($originalPath, PATHINFO_FILENAME);
+        $directory = dirname($originalPath);
+
+        $count = 1;
+        $newPath = $originalPath;
+
+        while (File::exists($newPath)) {
+            $newPath = $directory . '/' . $basename . '-' . $count . '.' . $extension;
+            $count++;
+        }
+
+        return $newPath;
     }
 
     /**
@@ -201,15 +293,6 @@ class TrashManager
             ->all();
     }
 
-    /**
-     * Helper Methods
-     */
-    protected function getPath(string $type, string $id, bool $withMeta = false): string
-    {
-        $path = Path::tidy("{$this->trashRoot}/{$type}/{$id}.md");
-        return $withMeta ? $path . '.meta' : $path;
-    }
-
     protected function getMetadata(string $type, string $id): array
     {
         $path = $this->getPath($type, $id, true);
@@ -230,10 +313,29 @@ class TrashManager
         }
     }
 
+    /**
+     * Save metadata for a trashed item
+     */
     protected function saveMetadata(string $type, string $id, array $data): void
     {
-        $path = $this->getPath($type, $id, true);
-        File::put($path, json_encode($data, JSON_PRETTY_PRINT));
+        $path = $this->getMetadataPath($type, $id);
+        
+        $metadata = array_merge([
+            'id' => $id,
+            'type' => $type,
+            'deleted_at' => Carbon::now()->timestamp,
+            'version' => '1.0'
+        ], $data);
+
+        File::put($path, YAML::dump($metadata));
+    }
+
+    /**
+     * Get metadata path for a trashed item
+     */
+    protected function getMetadataPath(string $type, string $id): string
+    {
+        return Path::tidy($this->trashRoot . '/' . $type . '/' . $id . '.meta.yaml');
     }
 
     protected function deleteMetadata(string $type, string $id): void
@@ -247,11 +349,18 @@ class TrashManager
         return Path::tidy("content/collections/{$collection}/{$id}.md");
     }
 
+    /**
+     * Check if type is enabled
+     */
     protected function isTypeEnabled(string $type): bool
     {
-        return $this->config['enabled_types'][$type] ?? false;
+        return isset($this->config['enabled_types'][$type]) 
+            && $this->config['enabled_types'][$type] === true;
     }
 
+    /**
+     * Ensure directory exists
+     */
     protected function ensureDirectoryExists(string $path): void
     {
         $directory = dirname($path);
@@ -259,6 +368,19 @@ class TrashManager
         if (!File::exists($directory)) {
             File::makeDirectory($directory, 0755, true);
         }
+    }
+
+    /**
+     * Get the path of a trashed file
+     */
+    protected function getPath(string $type, string $id): string
+    {
+        $metadata = $this->getMetadata($type, $id);
+        
+        // Use stored filename if available, fallback to id.md
+        $filename = $metadata['filename'] ?? ($id . '.md');
+        
+        return Path::tidy($this->trashRoot . '/' . $type . '/' . $filename);
     }
 
     protected function resolveUsername(?string $userId): string

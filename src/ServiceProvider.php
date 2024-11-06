@@ -3,23 +3,15 @@
 namespace TheTemplateBlog\TrashBin;
 
 use Statamic\Providers\AddonServiceProvider;
-use TheTemplateBlog\TrashBin\Commands\PurgeTrashCommand;
-use TheTemplateBlog\TrashBin\Commands\CreateTrashDirectoriesCommand;
-use TheTemplateBlog\TrashBin\Commands\InstallTrashBinCommand;
 use TheTemplateBlog\TrashBin\Http\Middleware\TrashBinPermissions;
-use TheTemplateBlog\TrashBin\Listeners\HandleEntryDeleted;
+use Statamic\Events\EntryDeleting;
+use TheTemplateBlog\TrashBin\Listeners\HandleEntryDeleting;
 use TheTemplateBlog\TrashBin\Services\TrashManager;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 
 class ServiceProvider extends AddonServiceProvider
 {
-    protected $commands = [
-        PurgeTrashCommand::class,
-        CreateTrashDirectoriesCommand::class,
-        InstallTrashBinCommand::class,
-    ];
-
     protected $middlewareGroups = [
         'statamic.cp.authenticated' => [
             TrashBinPermissions::class,
@@ -27,8 +19,8 @@ class ServiceProvider extends AddonServiceProvider
     ];
 
     protected $listen = [
-        'Statamic\Events\EntryDeleted' => [
-            HandleEntryDeleted::class,
+        EntryDeleting::class => [
+            HandleEntryDeleting::class,
         ],
     ];
 

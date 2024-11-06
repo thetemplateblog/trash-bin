@@ -110,6 +110,28 @@ class TrashManager
     }
 
     /**
+     * Move an item to trash
+     */
+    public function moveToTrash(string $type, string $originalPath): void
+    {
+        $filename = pathinfo($originalPath, PATHINFO_BASENAME);
+        $trashPath = $this->trashRoot . '/' . $type . '/' . $filename;
+        $this->ensureDirectoryExists(dirname($trashPath));
+
+        // Move file to trash
+        File::move($originalPath, $trashPath);
+
+        // Create metadata
+        $metadata = [
+            'original_path' => $originalPath,
+            'deleted_at' => Carbon::now()->timestamp,
+            'collection' => $this->getCollectionFromPath($originalPath),
+        ];
+
+        File::put($this->getMetadataPath($type, $filename), YAML::dump($metadata));
+    }
+
+    /**
      * Get the path of a trashed file
      */
     protected function getPath(string $type, string $id): string
@@ -161,9 +183,9 @@ class TrashManager
     /**
      * Get metadata path for a trashed item
      */
-    protected function getMetadataPath(string $type, string $id): string
+    protected function getMetadataPath(string $type, string $filename): string
     {
-        return $this->trashRoot . '/' . $type . '/' . $id . '.meta.yaml';
+        return $this->trashRoot . '/' . $type . '/' . $filename . '.meta.yaml';
     }
 
     /**
@@ -235,6 +257,15 @@ class TrashManager
                 return [$handle => $collection ? $collection->title() : ucfirst($handle)];
             })
             ->all();
+    }
+
+    /**
+     * Get collection from path
+     */
+    protected function getCollectionFromPath(string $path): ?string
+    {
+        // Logic to determine collection from path
+        return null; // Placeholder
     }
 
     /**

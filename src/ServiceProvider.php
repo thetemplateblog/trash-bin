@@ -68,12 +68,6 @@ class ServiceProvider extends AddonServiceProvider
         
         // Register permissions
         $this->bootPermissions();
-
-        // Log that the addon has booted
-        Log::info('Trash Bin addon booted', [
-            'config' => config('trash-bin'),
-            'trash_folder' => config('trash-bin.paths.trash_folder')
-        ]);
     }
 
     /**
@@ -82,7 +76,6 @@ class ServiceProvider extends AddonServiceProvider
     protected function initializeTrashStructure()
     {
         $trashRoot = config('trash-bin.paths.trash_folder');
-        Log::info('Initializing trash structure', ['root' => $trashRoot]);
         
         // Create root trash directory if it doesn't exist
         if (!File::exists($trashRoot)) {

@@ -178,5 +178,21 @@ class TrashController extends CpController
         ];
     }
 
+    /**
+     * Redirect with error message
+     */
+    protected function redirectWithError(string $route, string $message): RedirectResponse
+    {
+        return redirect()->route($route)->with('error', $message);
+    }
+
+    /**
+     * Redirect with success message
+     */
+    protected function redirectWithSuccess(string $route, string $message): RedirectResponse
+    {
+        return redirect()->route($route)->with('success', $message);
+    }
+
     // ... (rest of the code unchanged)
 }

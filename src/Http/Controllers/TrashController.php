@@ -89,6 +89,24 @@ class TrashController extends CpController
     }
 
     /**
+     * Restore a trashed item
+     */
+    public function restore(Request $request, string $type, string $id)
+    {
+        $this->authorize('restore trash-bin-item');
+
+        Log::info('Restoring trashed item', ['type' => $type, 'id' => $id]);
+        try {
+            $this->trashManager->restore($type, $id);
+            Log::info('Item restored successfully', ['type' => $type, 'id' => $id]);
+            return $this->redirectWithSuccess('trash-bin.index', __('Item restored successfully.'));
+        } catch (\Exception $e) {
+            Log::error('Failed to restore item', ['type' => $type, 'id' => $id, 'error' => $e->getMessage()]);
+            return $this->redirectWithError('trash-bin.index', __('Failed to restore item.'));
+        }
+    }
+
+    /**
      * Transform items for display
      */
     protected function transformItems($items)
@@ -116,6 +134,48 @@ class TrashController extends CpController
         
         Log::info('All items transformed', ['transformed' => $transformed]);
         return $transformed;
+    }
+
+    /**
+     * Get breadcrumbs for item view
+     */
+    protected function getBreadcrumbs(array $item): array
+    {
+        return [
+            ['text' => __('Trash Bin'), 'url' => cp_route('trash-bin.index')],
+            ['text' => $item['title'] ?? __('View Item')],
+        ];
+    }
+
+    /**
+     * Get available actions for an item
+     */
+    protected function getActions(array $item): array
+    {
+        return [
+            [
+                'label' => __('View'),
+                'icon' => 'eye',
+                'url' => cp_route('trash-bin.view', ['type' => $item['type'], 'id' => $item['id']]),
+                'permission' => 'view trash-bin-item',
+            ],
+            [
+                'label' => __('Restore'),
+                'icon' => 'refresh',
+                'url' => cp_route('trash-bin.restore', ['type' => $item['type'], 'id' => $item['id']]),
+                'method' => 'post',
+                'permission' => 'restore trash-bin-item',
+            ],
+            [
+                'label' => __('Delete'),
+                'icon' => 'trash',
+                'url' => cp_route('trash-bin.destroy', ['type' => $item['type'], 'id' => $item['id']]),
+                'method' => 'delete',
+                'permission' => 'delete trash-bin-item',
+                'dangerous' => true,
+                'confirm' => __('Are you sure you want to permanently delete this item?'),
+            ],
+        ];
     }
 
     // ... (rest of the code unchanged)

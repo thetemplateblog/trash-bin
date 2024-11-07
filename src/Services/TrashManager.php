@@ -28,16 +28,16 @@ class TrashManager
             ->map(function ($file) {
                 $pathParts = explode('/', $file);
                 $type = $pathParts[count($pathParts) - 2]; // Get the parent directory name
-                $id = pathinfo($file, PATHINFO_FILENAME);
+                $filename = pathinfo($file, PATHINFO_BASENAME);
                 
                 // Get metadata
-                $metadata = $this->getMetadata($type, $id);
+                $metadata = $this->getMetadata($type, $filename);
                 
                 // Get content
                 $content = YAML::parse(File::get($file));
                 
                 return [
-                    'id' => $id,
+                    'filename' => $filename,
                     'type' => $type,
                     'title' => $content['title'] ?? 'Untitled',
                     'collection' => $metadata['collection'] ?? null,
@@ -45,6 +45,7 @@ class TrashManager
                     'formatted_date' => Carbon::createFromTimestamp($metadata['deleted_at'] ?? File::lastModified($file))->diffForHumans(),
                 ];
             })
+            ->filter()
             ->sortByDesc('deleted_at')
             ->values();
     }
@@ -52,22 +53,22 @@ class TrashManager
     /**
      * Get a single trashed item
      */
-    public function getTrashedItem(string $type, string $id): ?array
+    public function getTrashedItem(string $type, string $filename): ?array
     {
-        $file = $this->getPath($type, $id);
+        $file = $this->getPath($type, $filename);
         
         if (!File::exists($file)) {
             return null;
         }
 
         // Get metadata
-        $metadata = $this->getMetadata($type, $id);
+        $metadata = $this->getMetadata($type, $filename);
         
         // Get content
         $content = YAML::parse(File::get($file));
         
         return [
-            'id' => $id,
+            'filename' => $filename,
             'type' => $type,
             'title' => $content['title'] ?? 'Untitled',
             'collection' => $metadata['collection'] ?? null,
@@ -81,10 +82,10 @@ class TrashManager
     /**
      * Restore an item from trash
      */
-    public function restore(string $type, string $id): void
+    public function restore(string $type, string $filename): void
     {
-        $trashPath = $this->getPath($type, $id);
-        $metadata = $this->getMetadata($type, $id);
+        $trashPath = $this->getPath($type, $filename);
+        $metadata = $this->getMetadata($type, $filename);
 
         if (!File::exists($trashPath)) {
             throw new \Exception("Trashed file not found");
@@ -106,26 +107,30 @@ class TrashManager
         File::move($trashPath, $restorePath);
 
         // Clean up metadata
-        File::delete($this->getMetadataPath($type, $id));
+        File::delete($this->getMetadataPath($type, $filename));
     }
 
     /**
      * Move an item to trash
      */
-    public function moveToTrash(string $type, string $originalPath): void
+    public function moveToTrash(string $type, string $fileName): void
     {
-        $filename = pathinfo($originalPath, PATHINFO_BASENAME);
+        if (!File::exists($fileName)) {
+            throw new \Exception("Original file not found: {$fileName}");
+        }
+
+        $filename = pathinfo($fileName, PATHINFO_BASENAME);
         $trashPath = $this->trashRoot . '/' . $type . '/' . $filename;
         $this->ensureDirectoryExists(dirname($trashPath));
 
         // Move file to trash
-        File::move($originalPath, $trashPath);
+        File::copy($fileName, $trashPath);
 
         // Create metadata
         $metadata = [
-            'original_path' => $originalPath,
+            'original_path' => $fileName,
             'deleted_at' => Carbon::now()->timestamp,
-            'collection' => $this->getCollectionFromPath($originalPath),
+            'collection' => $this->getCollectionFromPath($fileName),
         ];
 
         File::put($this->getMetadataPath($type, $filename), YAML::dump($metadata));
@@ -134,13 +139,8 @@ class TrashManager
     /**
      * Get the path of a trashed file
      */
-    protected function getPath(string $type, string $id): string
+    protected function getPath(string $type, string $filename): string
     {
-        $metadata = $this->getMetadata($type, $id);
-        
-        // Use stored filename if available, fallback to id.md
-        $filename = $metadata['original_filename'] ?? ($id . '.md');
-        
         return $this->trashRoot . '/' . $type . '/' . $filename;
     }
 
@@ -169,8 +169,8 @@ class TrashManager
             
             // Only include files that have corresponding metadata
             $typeFiles = array_filter($typeFiles, function($file) use ($type) {
-                $id = pathinfo($file, PATHINFO_FILENAME);
-                $metaPath = $this->getMetadataPath($type, $id);
+                $filename = pathinfo($file, PATHINFO_BASENAME);
+                $metaPath = $this->getMetadataPath($type, $filename);
                 return File::exists($metaPath);
             });
             
@@ -191,9 +191,9 @@ class TrashManager
     /**
      * Get metadata for a trashed item
      */
-    protected function getMetadata(string $type, string $id): array
+    protected function getMetadata(string $type, string $filename): array
     {
-        $metadataPath = $this->getMetadataPath($type, $id);
+        $metadataPath = $this->getMetadataPath($type, $filename);
         
         if (!File::exists($metadataPath)) {
             return [];
@@ -204,7 +204,7 @@ class TrashManager
         } catch (\Exception $e) {
             Log::error('Error reading metadata', [
                 'type' => $type,
-                'id' => $id,
+                'filename' => $filename,
                 'error' => $e->getMessage()
             ]);
             return [];

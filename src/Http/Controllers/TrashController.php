@@ -64,13 +64,13 @@ class TrashController extends CpController
     /**
      * View a specific trashed item
      */
-    public function view(Request $request, string $type, string $id)
+    public function view(Request $request, string $type, string $filename)
     {
         $this->authorize('view trash-bin-item');
 
-        Log::info('Viewing trashed item', ['type' => $type, 'id' => $id]);
-        if (!$item = $this->trashManager->getTrashedItem($type, $id)) {
-            Log::error('Trashed item not found', ['type' => $type, 'id' => $id]);
+        Log::info('Viewing trashed item', ['type' => $type, 'filename' => $filename]);
+        if (!$item = $this->trashManager->getTrashedItem($type, $filename)) {
+            Log::error('Trashed item not found', ['type' => $type, 'filename' => $filename]);
             return $this->redirectWithError('trash-bin.index', __('Item not found.'));
         }
 
@@ -91,17 +91,17 @@ class TrashController extends CpController
     /**
      * Restore a trashed item
      */
-    public function restore(Request $request, string $type, string $id)
+    public function restore(Request $request, string $type, string $filename)
     {
         $this->authorize('restore trash-bin-item');
 
-        Log::info('Restoring trashed item', ['type' => $type, 'id' => $id]);
+        Log::info('Restoring trashed item', ['type' => $type, 'filename' => $filename]);
         try {
-            $this->trashManager->restore($type, $id);
-            Log::info('Item restored successfully', ['type' => $type, 'id' => $id]);
+            $this->trashManager->restore($type, $filename);
+            Log::info('Item restored successfully', ['type' => $type, 'filename' => $filename]);
             return $this->redirectWithSuccess('trash-bin.index', __('Item restored successfully.'));
         } catch (\Exception $e) {
-            Log::error('Failed to restore item', ['type' => $type, 'id' => $id, 'error' => $e->getMessage()]);
+            Log::error('Failed to restore item', ['type' => $type, 'filename' => $filename, 'error' => $e->getMessage()]);
             return $this->redirectWithError('trash-bin.index', __('Failed to restore item.'));
         }
     }
@@ -117,15 +117,15 @@ class TrashController extends CpController
             Log::info('Transforming item', ['item' => $item]);
             
             $transformed = [
-                'id' => $item['id'],
+                'filename' => $item['filename'],
                 'title' => $item['title'] ?? __('Untitled'),
                 'type' => $item['type'],
                 'collection' => $item['collection'] ?? null,
                 'deleted_at' => $item['deleted_at'],
                 'formatted_date' => Carbon::createFromTimestamp($item['deleted_at'])->diffForHumans(),
-                'url' => cp_route('trash-bin.view', ['type' => $item['type'], 'id' => $item['id']]),
-                'restoreUrl' => cp_route('trash-bin.restore', ['type' => $item['type'], 'id' => $item['id']]),
-                'deleteUrl' => cp_route('trash-bin.destroy', ['type' => $item['type'], 'id' => $item['id']]),
+                'url' => cp_route('trash-bin.view', ['type' => $item['type'], 'filename' => $item['filename']]),
+                'restoreUrl' => cp_route('trash-bin.restore', ['type' => $item['type'], 'filename' => $item['filename']]),
+                'deleteUrl' => cp_route('trash-bin.destroy', ['type' => $item['type'], 'filename' => $item['filename']]),
             ];
             
             Log::info('Transformed item', ['transformed' => $transformed]);
@@ -156,20 +156,20 @@ class TrashController extends CpController
             [
                 'label' => __('View'),
                 'icon' => 'eye',
-                'url' => cp_route('trash-bin.view', ['type' => $item['type'], 'id' => $item['id']]),
+                'url' => cp_route('trash-bin.view', ['type' => $item['type'], 'filename' => $item['filename']]),
                 'permission' => 'view trash-bin-item',
             ],
             [
                 'label' => __('Restore'),
                 'icon' => 'refresh',
-                'url' => cp_route('trash-bin.restore', ['type' => $item['type'], 'id' => $item['id']]),
+                'url' => cp_route('trash-bin.restore', ['type' => $item['type'], 'filename' => $item['filename']]),
                 'method' => 'post',
                 'permission' => 'restore trash-bin-item',
             ],
             [
                 'label' => __('Delete'),
                 'icon' => 'trash',
-                'url' => cp_route('trash-bin.destroy', ['type' => $item['type'], 'id' => $item['id']]),
+                'url' => cp_route('trash-bin.destroy', ['type' => $item['type'], 'filename' => $item['filename']]),
                 'method' => 'delete',
                 'permission' => 'delete trash-bin-item',
                 'dangerous' => true,

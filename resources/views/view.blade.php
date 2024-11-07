@@ -11,7 +11,7 @@
     <div class="card p-4 mb-4">
         <h2 class="mb-2 text-lg font-bold">{{ __('Item Details') }}</h2>
         <div class="metadata">
-            <p><strong>{{ __('ID') }}:</strong> {{ $trashedItem['id'] ?? 'Unknown' }}</p>
+            <p><strong>{{ __('Filename') }}:</strong> {{ $trashedItem['filename'] ?? 'Unknown' }}</p>
             <p><strong>{{ __('Type') }}:</strong> {{ $trashedItem['type'] ?? 'Unknown' }}</p>
             <p><strong>{{ __('Collection') }}:</strong> {{ $trashedItem['collection'] ?? 'N/A' }}</p>
             <p><strong>{{ __('Deleted At') }}:</strong> {{ $trashedItem['deleted_at'] ? \Carbon\Carbon::createFromTimestamp($trashedItem['deleted_at'])->format('Y-m-d H:i:s') : 'Unknown' }}</p>

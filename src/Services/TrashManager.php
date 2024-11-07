@@ -113,27 +113,31 @@ class TrashManager
     /**
      * Move an item to trash
      */
-    public function moveToTrash(string $type, string $fileName): void
+    public function moveToTrash(string $type, array $metadata): void
     {
-        if (!File::exists($fileName)) {
-            throw new \Exception("Original file not found: {$fileName}");
+        // Extract file path from metadata
+        $filePath = $metadata['path'];
+    
+        if (!File::exists($filePath)) {
+            throw new \Exception("Original file not found: {$filePath}");
         }
-
-        $filename = pathinfo($fileName, PATHINFO_BASENAME);
+    
+        $filename = basename($filePath);
         $trashPath = $this->trashRoot . '/' . $type . '/' . $filename;
         $this->ensureDirectoryExists(dirname($trashPath));
-
-        // Move file to trash
-        File::copy($fileName, $trashPath);
-
-        // Create metadata
-        $metadata = [
-            'original_path' => $fileName,
+    
+        // Move the file to trash
+        File::copy($filePath, $trashPath);
+    
+        // Add additional metadata
+        $metadata = array_merge($metadata, [
             'deleted_at' => Carbon::now()->timestamp,
-            'collection' => $this->getCollectionFromPath($fileName),
-        ];
-
-        File::put($this->getMetadataPath($type, $filename), YAML::dump($metadata));
+            'collection' => $metadata['collection'],
+        ]);
+    
+        // Write the metadata to a YAML file
+        $metadataPath = $this->getMetadataPath($type, $filename);
+        File::put($metadataPath, YAML::dump($metadata));
     }
 
     /**

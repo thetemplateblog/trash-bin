@@ -24,12 +24,12 @@ class HandleEntryDeleting
         ]);
 
         try {
-            $this->trashManager->moveToTrash('entries', $event->entry->id(), [
+            $this->trashManager->moveToTrash('entries', [
                 'collection' => $event->entry->collection()->handle(),
-                'entry' => $event->entry->fileData(),
                 'path' => $event->entry->path(),
+                'slug' => $event->entry->slug(),
                 'filename' => basename($event->entry->path())
-            ]);
+            ]);            
 
             Log::info('Entry moved to trash successfully', [
                 'entry_id' => $event->entry->id(),

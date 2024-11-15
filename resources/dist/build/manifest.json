@@ -1,0 +1,12 @@
+{
+  "resources/css/trashbin.css": {
+    "file": "assets/trashbin-2b2a7b60.css",
+    "isEntry": true,
+    "src": "resources/css/trashbin.css"
+  },
+  "resources/js/trashbin.js": {
+    "file": "assets/trashbin-4ed993c7.js",
+    "isEntry": true,
+    "src": "resources/js/trashbin.js"
+  }
+}

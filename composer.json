@@ -1,0 +1,38 @@
+{
+    "name": "thetemplateblog/trash-bin",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "TheTemplateBlog\\TrashBin\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TheTemplateBlog\\TrashBin\\Tests\\": "tests"
+        }
+    },
+    "require": {
+        "statamic/cms": "^5.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "pixelfear/composer-dist-plugin": true
+        }
+    },
+    "extra": {
+        "statamic": {
+            "name": "Trash Bin",
+            "description": "Trash Bin addon"
+        },
+        "laravel": {
+            "providers": [
+                "TheTemplateBlog\\TrashBin\\ServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
